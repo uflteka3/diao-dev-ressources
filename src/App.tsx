@@ -25,6 +25,7 @@ export default function App() {
   const [newsletterEmail, setNewsletterEmail] = useState('')
   const [newsletterMessage, setNewsletterMessage] = useState('')
   const [loading, setLoading] = useState(false)
+  const [uploadingImage, setUploadingImage] = useState(false)
 
   const liveMode = hasSupabase && Boolean(supabase)
 
@@ -70,6 +71,57 @@ export default function App() {
     if (error) setLoginError(error.message)
   }
   async function signOut() { await supabase?.auth.signOut(); setTab('home') }
+  async function uploadCoverImage(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    if (!file.type.startsWith('image/')) {
+      setAdminMessage('Choisis un fichier image.')
+      e.target.value = ''
+      return
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setAdminMessage('Image trop volumineuse : maximum 5 Mo.')
+      e.target.value = ''
+      return
+    }
+
+    if (!supabase || !isAdmin) {
+      setAdminMessage('Connecte-toi comme administrateur.')
+      e.target.value = ''
+      return
+    }
+
+    setUploadingImage(true)
+    setAdminMessage('')
+
+    const extension = file.name.split('.').pop()?.toLowerCase() || 'jpg'
+    const filePath = 'covers/' + crypto.randomUUID() + '.' + extension
+
+    const { error } = await supabase.storage
+      .from('resource-assets')
+      .upload(filePath, file, {
+        cacheControl: '3600',
+        upsert: false,
+        contentType: file.type
+      })
+
+    if (error) {
+      setAdminMessage('Erreur d’envoi : ' + error.message)
+    } else {
+      const { data } = supabase.storage
+        .from('resource-assets')
+        .getPublicUrl(filePath)
+
+      setForm(current => ({ ...current, cover_url: data.publicUrl }))
+      setAdminMessage('Image envoyée avec succès !')
+    }
+
+    setUploadingImage(false)
+    e.target.value = ''
+  }
+
   async function saveResource(e: React.FormEvent) {
     e.preventDefault(); setAdminMessage('')
     if (!supabase || !isAdmin) return
@@ -132,7 +184,7 @@ export default function App() {
     {tab==='admin' && !selected && <main className="admin-page"><div className="section-heading"><div><div className="eyebrow muted">ESPACE PRIVÉ</div><h2>Administration</h2><p>Gère les ressources de ta bibliothèque.</p></div>{isAdmin && <button className="btn-secondary" onClick={signOut}><LogOut size={15}/> Déconnexion</button>}</div>
       {!isAdmin ? <form className="login-card" onSubmit={signIn}><div className="login-icon"><Lock/></div><h3>Connexion administrateur</h3><p>Connecte-toi avec le compte administrateur créé dans Supabase.</p><label>Adresse e-mail<input type="email" required value={loginEmail} onChange={e=>setLoginEmail(e.target.value)} placeholder="admin@exemple.com"/></label><label>Mot de passe<input type="password" required value={loginPassword} onChange={e=>setLoginPassword(e.target.value)} placeholder="Ton mot de passe"/></label>{loginError && <p className="error">{loginError}</p>}<button className="btn-primary full-btn">Se connecter</button>{!liveMode && <p className="notice">Mode aperçu : configure Supabase pour activer l'administration réelle.</p>}</form> :
       <><div className="stats-grid"><Stat icon={<FileText/>} label="Ressources publiées" value={resources.length}/><Stat icon={<Eye/>} label="Consultations (aperçu)" value={resources.reduce((a,r)=>a+r.views,0)}/><Stat icon={<MousePointerClick/>} label="Clics (aperçu)" value={resources.reduce((a,r)=>a+r.clicks,0)}/></div>
-      <form className="resource-form" onSubmit={saveResource}><h3>{editingId?'Modifier une ressource':'Ajouter une ressource'}</h3><div className="form-grid"><label>Titre<input required value={form.title} onChange={e=>setForm({...form,title:e.target.value,slug:form.slug || slugify(e.target.value)})}/></label><label>Slug URL<input required value={form.slug} onChange={e=>setForm({...form,slug:slugify(e.target.value)})}/></label><label>Catégorie<select value={form.category} onChange={e=>setForm({...form,category:e.target.value})}>{categories.map(c=><option key={c}>{c}</option>)}</select></label><label>Mots-clés (séparés par des virgules)<input value={form.tags} onChange={e=>setForm({...form,tags:e.target.value})} placeholder="IA, productivité, gratuit"/></label><label className="wide">Description courte<input required value={form.short_description} onChange={e=>setForm({...form,short_description:e.target.value})}/></label><label className="wide">Description détaillée<textarea rows={4} value={form.description} onChange={e=>setForm({...form,description:e.target.value})}/></label><label>URL de l'image<input type="url" value={form.cover_url} onChange={e=>setForm({...form,cover_url:e.target.value})} placeholder="https://..."/></label><label>Lien externe<input type="url" value={form.external_url} onChange={e=>setForm({...form,external_url:e.target.value})} placeholder="https://..."/></label><label className="wide">URL du fichier à télécharger (facultatif)<input type="url" value={form.file_url} onChange={e=>setForm({...form,file_url:e.target.value})} placeholder="https://..."/></label><label className="check-label"><input type="checkbox" checked={form.published} onChange={e=>setForm({...form,published:e.target.checked})}/> Publier immédiatement</label></div><div className="form-buttons"><button className="btn-primary" disabled={loading}>{loading?'Enregistrement…':'Enregistrer la ressource'}</button>{editingId && <button type="button" className="btn-secondary" onClick={()=>{setEditingId(null);setForm(blankForm)}}>Annuler</button>}</div>{adminMessage && <p className="notice">{adminMessage}</p>}</form>
+      <form className="resource-form" onSubmit={saveResource}><h3>{editingId?'Modifier une ressource':'Ajouter une ressource'}</h3><div className="form-grid"><label>Titre<input required value={form.title} onChange={e=>setForm({...form,title:e.target.value,slug:form.slug || slugify(e.target.value)})}/></label><label>Slug URL<input required value={form.slug} onChange={e=>setForm({...form,slug:slugify(e.target.value)})}/></label><label>Catégorie<select value={form.category} onChange={e=>setForm({...form,category:e.target.value})}>{categories.map(c=><option key={c}>{c}</option>)}</select></label><label>Mots-clés (séparés par des virgules)<input value={form.tags} onChange={e=>setForm({...form,tags:e.target.value})} placeholder="IA, productivité, gratuit"/></label><label className="wide">Description courte<input required value={form.short_description} onChange={e=>setForm({...form,short_description:e.target.value})}/></label><label className="wide">Description détaillée<textarea rows={4} value={form.description} onChange={e=>setForm({...form,description:e.target.value})}/></label><label>Choisir une image depuis le téléphone<input type="file" accept="image/*" onChange={uploadCoverImage} disabled={uploadingImage}/><small>{uploadingImage ? 'Envoi de l’image…' : 'Image JPG, PNG ou WebP · 5 Mo maximum'}</small></label><label>Ou coller l’URL de l’image<input type="url" value={form.cover_url} onChange={e=>setForm({...form,cover_url:e.target.value})} placeholder="https://..."/></label><label>Lien externe<input type="url" value={form.external_url} onChange={e=>setForm({...form,external_url:e.target.value})} placeholder="https://..."/></label><label className="wide">URL du fichier à télécharger (facultatif)<input type="url" value={form.file_url} onChange={e=>setForm({...form,file_url:e.target.value})} placeholder="https://..."/></label><label className="check-label"><input type="checkbox" checked={form.published} onChange={e=>setForm({...form,published:e.target.checked})}/> Publier immédiatement</label></div><div className="form-buttons"><button className="btn-primary" disabled={loading}>{loading?'Enregistrement…':'Enregistrer la ressource'}</button>{editingId && <button type="button" className="btn-secondary" onClick={()=>{setEditingId(null);setForm(blankForm)}}>Annuler</button>}</div>{adminMessage && <p className="notice">{adminMessage}</p>}</form>
       <div className="admin-list"><h3>Ressources existantes</h3>{resources.map(r=><div className="admin-row" key={r.id}><div><b>{r.title}</b><small>{r.category} · {r.published?'Publiée':'Brouillon'}</small></div><div className="row-actions"><button aria-label="Modifier" onClick={()=>editResource(r)}><Pencil size={16}/></button><button aria-label="Supprimer" onClick={()=>deleteResource(r.id)}><Trash2 size={16}/></button></div></div>)}</div></>}
     </main>}
     <footer><div className="footer-brand"><img className="brand-photo" src="/diao-profil.png" alt="DIAO DEV" /><b>DIAO DEV RESSOURCES</b></div><p>Les ressources utiles pour apprendre, créer et avancer.</p><div className="footer-bottom"><span>© {new Date().getFullYear()} DIAO DEV. Tous droits réservés.</span><span>Conçu avec passion au service des créateurs.</span></div></footer>
