@@ -9,6 +9,9 @@ export type Resource = {
   cover_url: string | null
   external_url: string | null
   file_url: string | null
+  is_paid?: boolean
+  price?: number | null
+  purchase_url?: string | null
   published: boolean
   views: number
   clicks: number
